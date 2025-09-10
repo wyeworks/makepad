@@ -4,8 +4,8 @@ use {
         rc::Rc,
         cell::{RefCell},
     },
-
     crate::{
+        makepad_objc_sys::objc_block,
         makepad_live_id::*,
         os::{
             cx_native::EventFlow,
@@ -253,6 +253,12 @@ impl Cx {
             IosEvent::Timer(e) => if e.timer_id != 0 {
                 self.call_event_handler(&Event::Timer(e))
             }
+            IosEvent::PermissionGranted(e) => {
+                self.call_event_handler(&Event::PermissionGranted(e))
+            }
+            IosEvent::PermissionDenied(e) => {
+                self.call_event_handler(&Event::PermissionDenied(e))
+            }
         }
 
         if self.any_passes_dirty() || self.need_redrawing() || self.new_next_frames.len() != 0 || paint_dirty|| self.demo_time_repaint{
@@ -282,6 +288,44 @@ impl Cx {
                 CxOsOp::StopTimer(timer_id) => {
                     with_ios_app(|app| app.stop_timer(timer_id));
                 },
+                CxOsOp::RequestPermission {permission} => {
+                    match permission {
+                        crate::permission::Permission::AudioInput => {
+                            unsafe {
+                                let av_audio_session: ObjcId = msg_send![class!(AVAudioSession), sharedInstance];
+                                
+                                // Check current permission status first - avoid re-asking if already granted
+                                let permission_status: i32 = msg_send![av_audio_session, recordPermission];
+                                
+                                match permission_status {
+                                    2 => { // AVAudioSessionRecordPermissionGranted
+                                        // Already granted, don't re-ask
+                                        self.call_event_handler(&crate::event::Event::PermissionGranted(crate::permission::PermissionResult {
+                                            permission
+                                        }));
+                                    },
+                                    1 => { // AVAudioSessionRecordPermissionDenied  
+                                        // Previously denied, send denied event
+                                        self.call_event_handler(&crate::event::Event::PermissionDenied(crate::permission::PermissionResult {
+                                            permission
+                                        }));
+                                    },
+                                    _ => { // AVAudioSessionRecordPermissionUndetermined (0) or unknown
+                                        // Need to request permission
+                                        self.ios_request_audio_permission(permission);
+                                    }
+                                }
+                            }
+                        },
+                        _ => {
+                            // For other permissions, auto-grant with warning
+                            crate::log!("iOS permission not implemented for: {:?}", permission);
+                            self.call_event_handler(&crate::event::Event::PermissionGranted(crate::permission::PermissionResult {
+                                permission,
+                            }));
+                        }
+                    }
+                },
                 CxOsOp::HttpRequest {request_id, request} => {
                     self.os.http_requests.make_http_request(request_id, request, self.os.network_response.sender.clone());
                 },
@@ -310,6 +354,28 @@ impl Cx {
         file_name:file_name.to_string(),
         content
     }]);*/
+    
+    fn ios_request_audio_permission(&mut self, permission: crate::permission::Permission) {
+        // Use the actual iOS AVAudioSession requestRecordPermission API
+        // This will show the system permission dialog to the user
+        unsafe {
+            let av_audio_session: ObjcId = msg_send![class!(AVAudioSession), sharedInstance];
+            
+            let completion_handler = objc_block!(move |granted: BOOL| {
+                let permission_result = crate::permission::PermissionResult {
+                    permission,
+                };
+                
+                if granted == YES {
+                    IosApp::do_callback(IosEvent::PermissionGranted(permission_result));
+                } else {
+                    IosApp::do_callback(IosEvent::PermissionDenied(permission_result));
+                }
+            });
+            
+            let () = msg_send![av_audio_session, requestRecordPermission: &completion_handler];
+        }
+    }
 
 }
 

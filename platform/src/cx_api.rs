@@ -88,6 +88,10 @@ pub enum CxOsOp {
     ShowClipboardActions(String),
     CopyToClipboard(String),
 
+    RequestPermission {
+        permission: crate::permission::Permission,
+    },
+
     HttpRequest {
         request_id: LiveId,
         request: HttpRequest,
@@ -157,6 +161,7 @@ impl std::fmt::Debug for CxOsOp {
             Self::UpdateMacosMenu(..)=>write!(f, "UpdateMacosMenu"),
             Self::ShowClipboardActions(..)=>write!(f, "ShowClipboardActions"),
             Self::CopyToClipboard(..)=>write!(f, "CopyToClipboard"),
+            Self::RequestPermission{..}=>write!(f, "RequestPermission"),
             
             Self::HttpRequest{..}=>write!(f, "HttpRequest"),
             Self::CancelHttpRequest{..}=>write!(f, "CancelHttpRequest"),
@@ -376,6 +381,11 @@ impl Cx {
         }
     }
 
+    pub fn request_permission(&mut self, permission: crate::permission::Permission) {
+        self.platform_ops.push(CxOsOp::RequestPermission {
+            permission,
+        });
+    }
 
     pub fn get_dpi_factor_of(&mut self, area: &Area) -> f64 {
         if let Some(draw_list_id) = area.draw_list_id() {

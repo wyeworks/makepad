@@ -392,6 +392,24 @@ impl Cx {
             FromJavaMessage::MidiDeviceOpened {name, midi_device} => {
                 self.os.media.android_midi().lock().unwrap().midi_device_opened(name, midi_device);
             }
+            FromJavaMessage::PermissionGranted {permission} => {
+                // Convert string permission back to enum
+                let perm = self.string_to_permission(&permission);
+                if let Some(perm) = perm {
+                    self.call_event_handler(&Event::PermissionGranted(crate::permission::PermissionResult {
+                        permission: perm,
+                    }));
+                }
+            }
+            FromJavaMessage::PermissionDenied {permission} => {
+                // Convert string permission back to enum
+                let perm = self.string_to_permission(&permission);
+                if let Some(perm) = perm {
+                    self.call_event_handler(&Event::PermissionDenied(crate::permission::PermissionResult {
+                        permission: perm,
+                    }));
+                }
+            }
             FromJavaMessage::VideoPlaybackPrepared {video_id, video_width, video_height, duration, surface_texture} => {
                 let e = Event::VideoPlaybackPrepared(
                     VideoPlaybackPreparedEvent {
@@ -897,6 +915,11 @@ impl Cx {
                 CxOsOp::CopyToClipboard(content) => {
                     unsafe {android_jni::to_java_copy_to_clipboard(content);}
                 },
+                CxOsOp::RequestPermission {permission} => {
+                    unsafe {
+                        android_jni::to_java_request_permission(permission.to_android_permission());
+                    }
+                },
                 CxOsOp::HttpRequest {request_id, request} => {
                     unsafe {android_jni::to_java_http_request(request_id, request);}
                 },
@@ -1012,6 +1035,15 @@ impl CxOsApi for Cx {
         }
         else{
             0.00001
+        }
+    }
+
+    fn string_to_permission(&self, permission_str: &str) -> Option<crate::permission::Permission> {
+        match permission_str {
+            "android.permission.RECORD_AUDIO" => Some(crate::permission::Permission::AudioInput),
+            "android.permission.CAMERA" => Some(crate::permission::Permission::Camera),
+            "android.permission.ACCESS_FINE_LOCATION" => Some(crate::permission::Permission::Location),
+            _ => None,
         }
     }
 }

@@ -92,6 +92,12 @@ pub enum FromJavaMessage {
         name: String,
         midi_device: jni_sys::jobject
     },
+    PermissionGranted{
+        permission: String,
+    },
+    PermissionDenied{
+        permission: String,
+    },
     VideoPlaybackPrepared {
         video_id: u64,
         video_width: u32,
@@ -688,6 +694,28 @@ pub unsafe extern "C" fn Java_dev_makepad_android_MakepadNative_onMidiDeviceOpen
     });
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn Java_dev_makepad_android_MakepadNative_onPermissionGranted(
+    env: *mut jni_sys::JNIEnv,
+    _: jni_sys::jclass,
+    permission: jni_sys::jstring,
+) {
+    send_from_java_message(FromJavaMessage::PermissionGranted {
+        permission: jstring_to_string(env, permission),
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Java_dev_makepad_android_MakepadNative_onPermissionDenied(
+    env: *mut jni_sys::JNIEnv,
+    _: jni_sys::jclass,
+    permission: jni_sys::jstring,
+) {
+    send_from_java_message(FromJavaMessage::PermissionDenied {
+        permission: jstring_to_string(env, permission),
+    });
+}
+
 unsafe fn jstring_to_string(env: *mut jni_sys::JNIEnv, java_string: jni_sys::jstring) -> String {
     let chars = (**env).GetStringUTFChars.unwrap()(env, java_string, std::ptr::null_mut());
     let rust_string = std::ffi::CStr::from_ptr(chars).to_str().unwrap().to_string();
@@ -996,4 +1024,20 @@ pub unsafe fn to_java_cleanup_video_playback_resources(env: *mut jni_sys::JNIEnv
 
 pub unsafe fn to_java_cleanup_video_decoder_ref(env: *mut jni_sys::JNIEnv, video_decoder_ref: jni_sys::jobject) {
     (**env).DeleteGlobalRef.unwrap()(env, video_decoder_ref);
+}
+
+pub unsafe fn to_java_request_permission(permission: &str) {
+    let env = attach_jni_env();
+    let permission_str = CString::new(permission).unwrap();
+    let permission_jstr = ((**env).NewStringUTF.unwrap())(env, permission_str.as_ptr());
+    
+    ndk_utils::call_void_method!(
+        env,
+        get_activity(),
+        "requestPermission",
+        "(Ljava/lang/String;)V",
+        permission_jstr
+    );
+    
+    (**env).DeleteLocalRef.unwrap()(env, permission_jstr);
 }

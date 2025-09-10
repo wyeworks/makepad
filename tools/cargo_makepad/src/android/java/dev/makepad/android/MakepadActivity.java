@@ -9,6 +9,8 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.Manifest;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.graphics.Rect;
@@ -420,6 +422,36 @@ public class MakepadActivity
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         //% MAIN_ACTIVITY_ON_ACTIVITY_RESULT
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // The request ID is encoded in the requestCode
+        long requestId = requestCode;
+
+        for (int i = 0; i < permissions.length; i++) {
+            if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                MakepadNative.onPermissionGranted(permissions[i], requestId);
+            } else {
+                MakepadNative.onPermissionDenied(permissions[i], requestId);
+            }
+        }
+    }
+
+    public void requestPermission(String permission, long requestId) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{permission}, (int)requestId);
+            } else {
+                // Permission already granted
+                MakepadNative.onPermissionGranted(permission, requestId);
+            }
+        } else {
+            // Permissions are granted at install time on older Android versions
+            MakepadNative.onPermissionGranted(permission, requestId);
+        }
     }
 
     @SuppressWarnings("deprecation")
